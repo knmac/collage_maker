@@ -214,6 +214,8 @@ def main():
             os.path.join(args.out_dir, '{}.jpg'.format(i+1)),
             canvas)
 
+    return 0
+
 
 if __name__ == '__main__':
     sys.exit(main())
