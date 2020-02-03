@@ -73,13 +73,15 @@ def parse_args():
     return args
 
 
-def rand_opts(canvas, scale_max):
+def rand_opts(canvas, scale_min, scale_max):
     """Randomize parameters based on canvas shape and scaling range
 
     Args:
         cavas: allocated canvas
+        scale_min: minimum scaling factor to randomize. The scale is uniformly
+            picked in the range (scale_min, scale_max)
         scale_max: maximum scaling factor to randomize. The scale is uniformly
-            picked in the range (0.1, scale_max)
+            picked in the range (scale_min, scale_max)
 
     Return:
         opts: randomize parameters as a dictionary with the following keys:
@@ -88,7 +90,7 @@ def rand_opts(canvas, scale_max):
     canvas_h, canvas_w, _ = canvas.shape
 
     angle = np.random.uniform(low=-90, high=90)
-    scale = np.random.uniform(low=0.1, high=scale_max)
+    scale = np.random.uniform(low=scale_min, high=scale_max)
     offset_h = int(np.random.uniform(low=-canvas_h//4, high=canvas_h))
     offset_w = int(np.random.randint(low=-canvas_w//4, high=canvas_w))
     LOGGER.debug('%f, %f-->%f, %d, %d', angle, scale_max, scale, offset_h, offset_w)
@@ -119,8 +121,14 @@ def load_and_process(fname, canvas, scale, angle):
     # Load image
     img = skimage.io.imread(fname)
 
+    # Random flip left/right
+    to_flip = np.random.choice([True, False])
+    if to_flip:
+        img = np.fliplr(img)
+
     # Add boundary by padding
-    img = np.pad(img, [[20, 20], [20, 20], [0, 0]],
+    pad_size = max(min(img.shape[0], img.shape[1]) // 70, 1)
+    img = np.pad(img, [[pad_size, pad_size], [pad_size, pad_size], [0, 0]],
                  'constant', constant_values=255)
 
     # Resize the image by the random scale
@@ -139,7 +147,7 @@ def load_and_process(fname, canvas, scale, angle):
     return img
 
 
-def put_in_canvas(fname, canvas, scale_max, viz=True):
+def put_in_canvas(fname, canvas, scale_min, scale_max, viz=True):
     """Load image and randomly put in canvas
 
     Args:
@@ -149,7 +157,7 @@ def put_in_canvas(fname, canvas, scale_max, viz=True):
         viz: whether to visualize the current progress
     """
     # Prepare random parameters
-    opts = rand_opts(canvas, scale_max)
+    opts = rand_opts(canvas, scale_min, scale_max)
     img = load_and_process(fname, canvas, opts['scale'], opts['angle'])
 
     # Put the image in canvas
@@ -186,6 +194,8 @@ def main():
 
     # Retrieve the list of images
     fname_lst = glob.glob(os.path.join(args.in_dir, '*'))
+    while len(fname_lst) < args.n_images:
+        fname_lst += fname_lst
     fname_lst = np.random.permutation(fname_lst)[:args.n_images]
 
     # Create canvas
@@ -207,7 +217,7 @@ def main():
     # Put all images in the canvas
     for i, fname in enumerate(fname_lst):
         LOGGER.info('Processing image: %d/%d', i+1, len(fname_lst))
-        put_in_canvas(fname, canvas, current_scale_max)
+        put_in_canvas(fname, canvas, args.scale_min, current_scale_max)
         current_scale_max -= delta
 
         skimage.io.imsave(
