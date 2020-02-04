@@ -50,8 +50,8 @@ def parse_args():
         help='Maximum scale (wrt canvas size) to rescale the images',
     )
     parser.add_argument(
-        '--n_images', type=int, default=100,
-        help='Number of images',
+        '--n_images', type=int, default=None,
+        help='Number of images. If nothing is given, will use all images available',
     )
     parser.add_argument(
         '--canvas_h', type=int, default=1920,
@@ -60,6 +60,10 @@ def parse_args():
     parser.add_argument(
         '--canvas_w', type=int, default=1080,
         help='Width of canvas',
+    )
+    parser.add_argument(
+        '--random_flip', action='store_true',
+        help='Whether to random flip the images',
     )
     parser.add_argument(
         '--out_dir', type=str, default='output',
@@ -73,7 +77,7 @@ def parse_args():
     return args
 
 
-def rand_opts(canvas, scale_min, scale_max):
+def rand_opts(canvas, scale_min, scale_max, random_flip):
     """Randomize parameters based on canvas shape and scaling range
 
     Args:
@@ -82,6 +86,7 @@ def rand_opts(canvas, scale_min, scale_max):
             picked in the range (scale_min, scale_max)
         scale_max: maximum scaling factor to randomize. The scale is uniformly
             picked in the range (scale_min, scale_max)
+        random_flip: whether to randomly flip the images
 
     Return:
         opts: randomize parameters as a dictionary with the following keys:
@@ -93,18 +98,25 @@ def rand_opts(canvas, scale_min, scale_max):
     scale = np.random.uniform(low=scale_min, high=scale_max)
     offset_h = int(np.random.uniform(low=-canvas_h//4, high=canvas_h))
     offset_w = int(np.random.randint(low=-canvas_w//4, high=canvas_w))
-    LOGGER.debug('%f, %f-->%f, %d, %d', angle, scale_max, scale, offset_h, offset_w)
+    if random_flip:
+        to_flip = np.random.choice([True, False])
+    else:
+        to_flip = False
+    LOGGER.debug(
+        '%f, %f-->%f, %d, %d, %r',
+        angle, scale_max, scale, offset_h, offset_w, to_flip)
 
     opts = {
         'angle': angle,
         'scale': scale,
         'offset_h': offset_h,
         'offset_w': offset_w,
+        'to_flip': to_flip,
     }
     return opts
 
 
-def load_and_process(fname, canvas, scale, angle):
+def load_and_process(fname, canvas, scale, angle, to_flip):
     """Load and process image
 
     Args:
@@ -112,6 +124,7 @@ def load_and_process(fname, canvas, scale, angle):
         canvas: allocated canvas
         scale: scaling factor to resize the image
         angle: angle to rotate the image
+        to_flip: whether to actually flip this image
 
     Return:
         img: processed image
@@ -122,12 +135,11 @@ def load_and_process(fname, canvas, scale, angle):
     img = skimage.io.imread(fname)
 
     # Random flip left/right
-    to_flip = np.random.choice([True, False])
     if to_flip:
         img = np.fliplr(img)
 
     # Add boundary by padding
-    pad_size = max(min(img.shape[0], img.shape[1]) // 70, 1)
+    pad_size = max(min(img.shape[0], img.shape[1]) * 5 // 100, 1)
     img = np.pad(img, [[pad_size, pad_size], [pad_size, pad_size], [0, 0]],
                  'constant', constant_values=255)
 
@@ -147,7 +159,7 @@ def load_and_process(fname, canvas, scale, angle):
     return img
 
 
-def put_in_canvas(fname, canvas, scale_min, scale_max, viz=True):
+def put_in_canvas(fname, canvas, scale_min, scale_max, random_flip, viz=True):
     """Load image and randomly put in canvas
 
     Args:
@@ -157,8 +169,9 @@ def put_in_canvas(fname, canvas, scale_min, scale_max, viz=True):
         viz: whether to visualize the current progress
     """
     # Prepare random parameters
-    opts = rand_opts(canvas, scale_min, scale_max)
-    img = load_and_process(fname, canvas, opts['scale'], opts['angle'])
+    opts = rand_opts(canvas, scale_min, scale_max, random_flip)
+    img = load_and_process(fname, canvas,
+                           opts['scale'], opts['angle'], opts['to_flip'])
 
     # Put the image in canvas
     for i in range(img.shape[0]):
@@ -194,9 +207,11 @@ def main():
 
     # Retrieve the list of images
     fname_lst = glob.glob(os.path.join(args.in_dir, '*'))
+    if args.n_images is None:
+        args.n_images = len(fname_lst)
     while len(fname_lst) < args.n_images:
         fname_lst += fname_lst
-    fname_lst = np.random.permutation(fname_lst)[:args.n_images]
+    fname_lst = np.random.permutation(fname_lst)[:args.n_images+1]
 
     # Create canvas
     if os.path.isfile(args.bg_img):
@@ -217,7 +232,8 @@ def main():
     # Put all images in the canvas
     for i, fname in enumerate(fname_lst):
         LOGGER.info('Processing image: %d/%d', i+1, len(fname_lst))
-        put_in_canvas(fname, canvas, args.scale_min, current_scale_max)
+        put_in_canvas(
+            fname, canvas, args.scale_min, current_scale_max, args.random_flip)
         current_scale_max -= delta
 
         skimage.io.imsave(
