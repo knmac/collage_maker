@@ -42,7 +42,7 @@ def parse_args():
         help='Background image',
     )
     parser.add_argument(
-        '--scale_min', type=float, default=0.3,
+        '--scale_min', type=float, default=0.2,
         help='Minimum scale (wrt canvas size) to rescale the images',
     )
     parser.add_argument(
@@ -165,7 +165,9 @@ def put_in_canvas(fname, canvas, scale_min, scale_max, random_flip, viz=True):
     Args:
         fname: path to the image file
         canvas: allocated canvas
+        scale_min: minimum scale to resize the image
         scale_max: maximum scale to resize the image
+        random_flip: whether to randomly flip the images
         viz: whether to visualize the current progress
     """
     # Prepare random parameters
